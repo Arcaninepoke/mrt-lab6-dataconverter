@@ -27,28 +27,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Настройка среды сборки.
+      # 2. Кэширование зависимостей сборки.
+      #    build/_deps — каталог FetchContent: скачанные исходники
+      #    yaml-cpp 0.9.0 и GoogleTest 1.14.0 + результаты их компиляции.
+      #    Ключ кэша включает runner.os (артефакты сборки несовместимы
+      #    между ОС) и хэш CMakeLists.txt — в нём зафиксированы версии
+      #    зависимостей, поэтому при их обновлении ключ меняется
+      #    и кэш пересобирается заново.
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('CMakeLists.txt') }}
+          # При промахе по полному ключу берём самый свежий кэш этой ОС
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      # 3. Настройка среды сборки.
       #    Компилятор и CMake уже установлены на раннере — проверяем версии.
       #    Внешние зависимости (yaml-cpp 0.9.0, GoogleTest 1.14.0) устанавливаются
-      #    автоматически на шаге конфигурирования: CMake FetchContent скачивает их
-      #    из GitHub по URL, указанным в CMakeLists.txt.
+      #    на шаге конфигурирования: CMake FetchContent скачивает их из GitHub
+      #    по URL, указанным в CMakeLists.txt (или берёт из кэша шага выше).
       - name: Setup build environment
         run: cmake --version
 
-      # 3. Конфигурирование проекта.
+      # 4. Конфигурирование проекта.
       #    CMAKE_BUILD_TYPE применяется генераторами с одной конфигурацией
       #    (Makefiles на Linux/macOS). На Windows генератор Visual Studio —
       #    многоконфигурационный, конфигурация выбирается при сборке (--config).
       - name: Configure (CMake)
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
-      # 4. Сборка приложения и тестов.
+      # 5. Сборка приложения и тестов.
       #    --config Release важен на Windows; на Linux/macOS флаг игнорируется.
       #    --parallel задействует все ядра раннера.
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      # 5. Запуск автоматических тестов (ctest поверх GoogleTest).
+      # 6. Запуск автоматических тестов (ctest поверх GoogleTest).
       #    --build-config Release нужен на Windows; на Linux/macOS игнорируется.
       #    Если хотя бы один тест провален, ctest возвращает ненулевой код,
       #    шаг завершается ошибкой и весь job становится красным.
