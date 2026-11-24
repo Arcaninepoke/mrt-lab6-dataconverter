@@ -8,8 +8,15 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test (Ubuntu)
-    runs-on: ubuntu-latest
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    # Матрица операционных систем: конвейер выполняется параллельно
+    # на трёх раннерах. Исходный код, набор тестов и стандарт C++17
+    # (задан в CMakeLists.txt) на всех платформах одинаковы.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       # 1. Получение исходного кода репозитория
@@ -17,25 +24,29 @@ jobs:
         uses: actions/checkout@v4
 
       # 2. Настройка среды сборки.
-      #    Компилятор и CMake уже установлены на раннере — проверяем их версии.
+      #    Компилятор и CMake уже установлены на раннере — проверяем версии.
       #    Внешние зависимости (yaml-cpp 0.9.0, GoogleTest 1.14.0) устанавливаются
       #    автоматически на шаге конфигурирования: CMake FetchContent скачивает их
       #    из GitHub по URL, указанным в CMakeLists.txt.
       - name: Setup build environment
-        run: |
-          cmake --version
-          g++ --version
+        run: cmake --version
 
-      # 3. Конфигурирование проекта (генерация Makefile)
+      # 3. Конфигурирование проекта.
+      #    CMAKE_BUILD_TYPE применяется генераторами с одной конфигурацией
+      #    (Makefiles на Linux/macOS). На Windows генератор Visual Studio —
+      #    многоконфигурационный, конфигурация выбирается при сборке (--config).
       - name: Configure (CMake)
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
-      # 4. Сборка приложения и тестов
+      # 4. Сборка приложения и тестов.
+      #    --config Release важен на Windows; на Linux/macOS флаг игнорируется.
+      #    --parallel задействует все ядра раннера.
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build build --config Release --parallel
 
       # 5. Запуск автоматических тестов (ctest поверх GoogleTest).
+      #    --build-config Release нужен на Windows; на Linux/macOS игнорируется.
       #    Если хотя бы один тест провален, ctest возвращает ненулевой код,
       #    шаг завершается ошибкой и весь job становится красным.
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --build-config Release --output-on-failure
