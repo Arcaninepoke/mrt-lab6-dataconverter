@@ -1,0 +1,41 @@
+# CI-конвейер для проекта DataConverter
+# Запускается при каждом push и при каждом pull request
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build & Test (Ubuntu)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Получение исходного кода репозитория
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Настройка среды сборки.
+      #    Компилятор и CMake уже установлены на раннере — проверяем их версии.
+      #    Внешние зависимости (yaml-cpp 0.9.0, GoogleTest 1.14.0) устанавливаются
+      #    автоматически на шаге конфигурирования: CMake FetchContent скачивает их
+      #    из GitHub по URL, указанным в CMakeLists.txt.
+      - name: Setup build environment
+        run: |
+          cmake --version
+          g++ --version
+
+      # 3. Конфигурирование проекта (генерация Makefile)
+      - name: Configure (CMake)
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      # 4. Сборка приложения и тестов
+      - name: Build
+        run: cmake --build build --parallel
+
+      # 5. Запуск автоматических тестов (ctest поверх GoogleTest).
+      #    Если хотя бы один тест провален, ctest возвращает ненулевой код,
+      #    шаг завершается ошибкой и весь job становится красным.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
